@@ -57,8 +57,8 @@ impl<M: prost::Message + std::default::Default> Decompressor<M> {
     pub async fn decompress(mut self) -> Result<(), Error> {
         trace!("decompress started");
         while let Some(compressed) = self.rx.recv().await {
-            let mut decoder = ProstDecoder::new_decompressed(compressed.as_slice())?;
-            while let Some(update) = decoder.next() {
+            let decoder = ProstDecoder::new_decompressed(compressed.as_slice())?;
+            for update in decoder {
                 let update = update?;
                 self.tx
                     .send(update)

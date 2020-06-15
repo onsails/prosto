@@ -37,7 +37,7 @@ impl ProstEncoder {
     }
 
     pub fn finish(mut self) -> Result<Vec<u8>, Error> {
-        if self.protobuf.len() != 0 {
+        if !self.protobuf.is_empty() {
             self.flush()?;
         }
         self.inner.finish().map_err(Error::Zstd)
@@ -105,7 +105,7 @@ impl<M: prost::Message> Compressor<M> {
 
         let compressed = encoder.finish()?;
         let compressed_len = compressed.len();
-        if compressed.len() > 0 {
+        if !compressed.is_empty() {
             trace!(compressed_len, "sending final chunk");
             self.tx.send(compressed).await?;
         }
