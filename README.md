@@ -1,5 +1,7 @@
 # Compress prost! messages with zstd, optional tokio channels support
 
+[![docs](https://docs.rs/prosto/badge.svg)](https://docs.rs/prosto)
+
 ## Simple compress/decompress
 
 ```rust
