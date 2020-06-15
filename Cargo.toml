@@ -34,4 +34,4 @@ proptest = "0.10"
 tokio = { version = "0.2", features = ["rt-threaded", "sync"]}
 
 [build-dependencies]
-tonic-build = "0.2"
+tonic-build = { version = "0.2", default-features = false, features = ["transport", "prost"] }
