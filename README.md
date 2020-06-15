@@ -35,7 +35,7 @@ prosto = { version = "0.1", features = ["enable-tokio"] }
 ```
 
 ```rust
-fn do_roundtrip_channels(compression_level: i32, dummies: Vec<proto::Dummy>) {
+fn do_roundtrip_channels(chunk_size: usize, compression_level: i32, dummies: Vec<proto::Dummy>) {
     tracing_subscriber::fmt::try_init().ok();
 
     let mut rt = Runtime::new().unwrap();
@@ -44,7 +44,7 @@ fn do_roundtrip_channels(compression_level: i32, dummies: Vec<proto::Dummy>) {
     let (ctx, crx) = mpsc::channel::<Vec<u8>>(dummies.len());
     let (utx, mut sink) = mpsc::channel::<proto::Dummy>(dummies.len());
 
-    let compressor = Compressor::new(urx, ctx, 256 * 1024, compression_level);
+    let compressor = Compressor::new(urx, ctx, chunk_size, compression_level);
     let decompressor = Decompressor::new(crx, utx);
 
     rt.block_on(async move {

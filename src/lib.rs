@@ -56,7 +56,7 @@ mod tests {
     #[test]
     fn roundtrip_channels_simple() {
         let dummies = dummy_dummies();
-        do_roundtrip_channels(5, dummies);
+        do_roundtrip_channels(1024, 5, dummies);
     }
 
     proptest! {
@@ -73,8 +73,8 @@ mod tests {
 
         #[cfg(feature = "enable-tokio")]
         #[test]
-        fn roundtrip_channels_prop(level in (-5..22), dummies in arb_dummies()) {
-            do_roundtrip_channels(level, dummies);
+        fn roundtrip_channels_prop(chunk_size in (0usize..256*1024), level in (-5..22), dummies in arb_dummies()) {
+            do_roundtrip_channels(chunk_size, level, dummies);
         }
     }
 
@@ -99,7 +99,7 @@ mod tests {
     }
 
     #[cfg(feature = "enable-tokio")]
-    fn do_roundtrip_channels(level: i32, dummies: Vec<proto::Dummy>) {
+    fn do_roundtrip_channels(chunk_size: usize, level: i32, dummies: Vec<proto::Dummy>) {
         tracing_subscriber::fmt::try_init().ok();
 
         let mut rt = Runtime::new().unwrap();
@@ -108,7 +108,7 @@ mod tests {
         let (ctx, crx) = mpsc::channel::<Vec<u8>>(dummies.len());
         let (utx, mut sink) = mpsc::channel::<proto::Dummy>(dummies.len());
 
-        let compressor = Compressor::new(urx, ctx, 256 * 1024, level);
+        let compressor = Compressor::new(urx, ctx, chunk_size, level);
         let decompressor = Decompressor::new(crx, utx);
 
         rt.block_on(async move {
