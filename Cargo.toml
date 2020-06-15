@@ -1,0 +1,37 @@
+[package]
+name = "prosto"
+version = "0.1.0"
+authors = ["Andrey Kuznetsov <fear@loathing.in>"]
+edition = "2018"
+license-file = "LICENSE.txt"
+description = "Compress prost! messages with zstd, optional tokio channels support"
+homepage = "https://github.com/onsails/prosto"
+repository = "https://github.com/onsails/prosto"
+documentation = "https://docs.rs/prosto"
+categories = ["compression"]
+keywords = ["protocol-buffers", "protobuf", "prost", "zstd", "tokio"]
+
+[features]
+default = []
+enable-tokio = ["tokio"]
+
+[dependencies]
+tonic = "0.2"
+prost = "0.6"
+prost-types = "0.6"
+
+zstd = "0.5"
+
+thiserror = "1.0"
+tracing = "0.1"
+
+tokio = { version = "0.2", default-features = false, features = ["sync"], optional = true }
+
+[dev-dependencies]
+rand = "0.7"
+tracing-subscriber = "0.2"
+proptest = "0.10"
+tokio = { version = "0.2", features = ["rt-threaded", "sync"]}
+
+[build-dependencies]
+tonic-build = "0.2"
