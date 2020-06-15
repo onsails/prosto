@@ -5,8 +5,8 @@
 ## Simple compress/decompress
 
 ```rust
-fn do_roundtrip_coders(dummies: Vec<proto::Dummy>) {
-    let mut encoder = ProstEncoder::new(0).unwrap();
+fn do_roundtrip_coders(compression_level: i32, dummies: Vec<proto::Dummy>) {
+    let mut encoder = ProstEncoder::new(compression_level).unwrap();
     for dummy in &dummies {
         encoder.write(dummy).unwrap();
     }
@@ -35,7 +35,7 @@ prosto = { version = "0.1", features = ["enable-tokio"] }
 ```
 
 ```rust
-fn do_roundtrip_channels(dummies: Vec<proto::Dummy>) {
+fn do_roundtrip_channels(compression_level: i32, dummies: Vec<proto::Dummy>) {
     tracing_subscriber::fmt::try_init().ok();
 
     let mut rt = Runtime::new().unwrap();
@@ -44,7 +44,7 @@ fn do_roundtrip_channels(dummies: Vec<proto::Dummy>) {
     let (ctx, crx) = mpsc::channel::<Vec<u8>>(dummies.len());
     let (utx, mut sink) = mpsc::channel::<proto::Dummy>(dummies.len());
 
-    let compressor = Compressor::new(urx, ctx, 256 * 1024, 5);
+    let compressor = Compressor::new(urx, ctx, 256 * 1024, compression_level);
     let decompressor = Decompressor::new(crx, utx);
 
     rt.block_on(async move {

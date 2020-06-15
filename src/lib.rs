@@ -48,19 +48,38 @@ mod tests {
 
     #[test]
     fn roundtrip_coders_simple() {
-        let mut dummies = vec![];
-        for id in 0..3 {
-            let dummy = proto::Dummy {
-                id,
-                smth: (0..id as u8).collect(),
-            };
-            dummies.push(dummy);
-        }
-        do_roundtrip_coders(dummies);
+        let dummies = dummy_dummies();
+        do_roundtrip_coders(5, dummies);
     }
 
-    fn do_roundtrip_coders(dummies: Vec<proto::Dummy>) {
-        let mut encoder = ProstEncoder::new(0).unwrap();
+    #[cfg(feature = "enable-tokio")]
+    #[test]
+    fn roundtrip_channels_simple() {
+        let dummies = dummy_dummies();
+        do_roundtrip_channels(5, dummies);
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 20,
+            timeout: 60_000,
+            .. ProptestConfig::default()
+        })]
+
+        #[test]
+        fn roundtrip_coders_prop(level in (-5..22), dummies in arb_dummies()) {
+            do_roundtrip_coders(level, dummies);
+        }
+
+        #[cfg(feature = "enable-tokio")]
+        #[test]
+        fn roundtrip_channels_prop(level in (-5..22), dummies in arb_dummies()) {
+            do_roundtrip_channels(level, dummies);
+        }
+    }
+
+    fn do_roundtrip_coders(level: i32, dummies: Vec<proto::Dummy>) {
+        let mut encoder = ProstEncoder::new(level).unwrap();
         for dummy in &dummies {
             encoder.write(dummy).unwrap();
         }
@@ -79,27 +98,8 @@ mod tests {
         assert_eq!(dummies.len(), i);
     }
 
-    proptest! {
-        #![proptest_config(ProptestConfig {
-            cases: 20,
-            timeout: 60_000,
-            .. ProptestConfig::default()
-        })]
-
-        #[test]
-        fn roundtrip_coders_prop(dummies in arb_dummies()) {
-            do_roundtrip_coders(dummies);
-        }
-
-        #[cfg(feature = "enable-tokio")]
-        #[test]
-        fn roundtrip_channels_prop(dummies in arb_dummies()) {
-            do_roundtrip_channels(dummies);
-        }
-    }
-
     #[cfg(feature = "enable-tokio")]
-    fn do_roundtrip_channels(dummies: Vec<proto::Dummy>) {
+    fn do_roundtrip_channels(level: i32, dummies: Vec<proto::Dummy>) {
         tracing_subscriber::fmt::try_init().ok();
 
         let mut rt = Runtime::new().unwrap();
@@ -108,7 +108,7 @@ mod tests {
         let (ctx, crx) = mpsc::channel::<Vec<u8>>(dummies.len());
         let (utx, mut sink) = mpsc::channel::<proto::Dummy>(dummies.len());
 
-        let compressor = Compressor::new(urx, ctx, 256 * 1024, 5);
+        let compressor = Compressor::new(urx, ctx, 256 * 1024, level);
         let decompressor = Decompressor::new(crx, utx);
 
         rt.block_on(async move {
@@ -129,6 +129,18 @@ mod tests {
 
             assert_eq!(dummies.len(), i);
         });
+    }
+
+    fn dummy_dummies() -> Vec<proto::Dummy> {
+        let mut dummies = vec![];
+        for id in 0..3 {
+            let dummy = proto::Dummy {
+                id,
+                smth: (0..id as u8).collect(),
+            };
+            dummies.push(dummy);
+        }
+        dummies
     }
 
     prop_compose! {
