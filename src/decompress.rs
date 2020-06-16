@@ -1,9 +1,10 @@
 use crate::Error;
+#[cfg(feature = "enable-tokio")]
+pub use io::*;
 use std::io::Cursor;
+
 #[cfg(feature = "enable-tokio")]
-use tokio::sync::mpsc;
-#[cfg(feature = "enable-tokio")]
-use tracing::*;
+pub mod io;
 
 pub struct ProstDecoder<M: prost::Message> {
     cursor: Cursor<Vec<u8>>,
@@ -24,17 +25,6 @@ impl<M: prost::Message> ProstDecoder<M> {
     }
 }
 
-#[cfg(feature = "enable-tokio")]
-type Rx = mpsc::Receiver<Vec<u8>>;
-#[cfg(feature = "enable-tokio")]
-type Tx<M> = mpsc::Sender<M>;
-
-#[cfg(feature = "enable-tokio")]
-pub struct Decompressor<M: prost::Message> {
-    rx: Rx,
-    tx: Tx<M>,
-}
-
 impl<M: prost::Message + std::default::Default> std::iter::Iterator for ProstDecoder<M> {
     type Item = Result<M, Error>;
 
@@ -45,29 +35,5 @@ impl<M: prost::Message + std::default::Default> std::iter::Iterator for ProstDec
         } else {
             None
         }
-    }
-}
-
-#[cfg(feature = "enable-tokio")]
-impl<M: prost::Message + std::default::Default> Decompressor<M> {
-    pub fn new(rx: Rx, tx: Tx<M>) -> Self {
-        Self { rx, tx }
-    }
-
-    pub async fn decompress(mut self) -> Result<(), Error> {
-        trace!("decompress started");
-        while let Some(compressed) = self.rx.recv().await {
-            let decoder = ProstDecoder::new_decompressed(compressed.as_slice())?;
-            for update in decoder {
-                let update = update?;
-                self.tx
-                    .send(update)
-                    .await
-                    .map_err(|_| Error::DecompressorSend)?;
-            }
-        }
-        trace!("decompress ended");
-
-        Ok(())
     }
 }

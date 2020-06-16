@@ -1,11 +1,11 @@
 use crate::Error;
-
+#[cfg(feature = "enable-tokio")]
+pub use io::*;
 use std::io::Write;
-#[cfg(feature = "enable-tokio")]
-use tokio::sync::mpsc;
-#[cfg(feature = "enable-tokio")]
-use tracing::*;
 use zstd::stream::Encoder;
+
+#[cfg(feature = "enable-tokio")]
+pub mod io;
 
 type VecEncoder = Encoder<Vec<u8>>;
 
@@ -54,64 +54,3 @@ impl ProstEncoder {
     }
 }
 
-#[cfg(feature = "enable-tokio")]
-type Rx<M> = mpsc::Receiver<M>;
-#[cfg(feature = "enable-tokio")]
-type Tx = mpsc::Sender<Vec<u8>>;
-
-#[cfg(feature = "enable-tokio")]
-pub struct Compressor<M: prost::Message> {
-    rx: Rx<M>,
-    tx: Tx,
-    chunk_size: usize,
-    level: i32,
-}
-
-#[cfg(feature = "enable-tokio")]
-impl<M: prost::Message> Compressor<M> {
-    pub fn new(rx: Rx<M>, tx: Tx, chunk_size: usize, level: i32) -> Self {
-        Self {
-            rx,
-            tx,
-            chunk_size,
-            level,
-        }
-    }
-
-    pub async fn compress(mut self) -> Result<(), Error> {
-        trace!("compress started");
-        let mut encoder = ProstEncoder::new(self.level)?;
-        let mut wrote_len = 0;
-
-        while let Some(update) = self.rx.recv().await {
-            wrote_len += encoder.write(&update)?;
-            let compressed_len = encoder.compressed_len();
-
-            trace!(
-                wrote_len,
-                compressed_len,
-                recommended_input_size = VecEncoder::recommended_input_size(),
-                "encoded update",
-            );
-
-            if compressed_len >= self.chunk_size {
-                let compressed = encoder.finish()?;
-                trace!(compressed_len, "sending chunk",);
-                self.tx.send(compressed).await?;
-
-                encoder = ProstEncoder::new(self.level)?;
-            }
-        }
-
-        let compressed = encoder.finish()?;
-        let compressed_len = compressed.len();
-        if !compressed.is_empty() {
-            trace!(compressed_len, "sending final chunk");
-            self.tx.send(compressed).await?;
-        }
-
-        trace!("compress ended");
-
-        Ok(())
-    }
-}
