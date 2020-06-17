@@ -13,7 +13,7 @@ keywords = ["protocol-buffers", "protobuf", "prost", "zstd", "tokio"]
 
 [features]
 default = []
-enable-tokio = ["tokio"]
+enable-tokio = ["tokio", "futures"]
 
 [dependencies]
 tonic = "0.2"
@@ -26,12 +26,14 @@ thiserror = "1.0"
 tracing = "0.1"
 
 tokio = { version = "0.2", default-features = false, features = ["sync"], optional = true }
+futures = { version = "0.3", optional = true }
 
 [dev-dependencies]
 rand = "0.7"
 tracing-subscriber = "0.2"
 proptest = "0.10"
 tokio = { version = "0.2", features = ["rt-threaded", "sync"]}
+anyhow = "1.0"
 
 [build-dependencies]
 tonic-build = { version = "0.2", default-features = false, features = ["transport", "prost"] }

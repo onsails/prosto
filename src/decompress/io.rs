@@ -1,35 +1,20 @@
 use crate::decompress::*;
 use crate::Error;
-use tokio::sync::mpsc;
-use tracing::*;
+use futures::prelude::*;
+use futures::stream;
 
-type Rx<In> = mpsc::Receiver<In>;
-type Tx<M> = mpsc::Sender<M>;
+type Result<M> = std::result::Result<M, Error>;
 
-pub struct Decompressor<M: prost::Message, In: AsRef<[u8]>> {
-    rx: Rx<In>,
-    tx: Tx<M>,
-}
+pub struct Decompressor;
 
-impl<M: prost::Message + std::default::Default, In: AsRef<[u8]>> Decompressor<M, In> {
-    pub fn new(rx: Rx<In>, tx: Tx<M>) -> Self {
-        Self { rx, tx }
-    }
-
-    pub async fn decompress(mut self) -> Result<(), Error> {
-        trace!("decompress started");
-        while let Some(compressed) = self.rx.recv().await {
-            let decoder = ProstDecoder::new_decompressed(compressed.as_ref())?;
-            for update in decoder {
-                let update = update?;
-                self.tx
-                    .send(update)
-                    .await
-                    .map_err(|_| Error::DecompressorSend)?;
-            }
-        }
-        trace!("decompress ended");
-
-        Ok(())
+impl Decompressor {
+    pub fn new<M: prost::Message + std::default::Default, In: AsRef<[u8]>, S: Stream<Item = In>>(
+        in_stream: S,
+    ) -> impl Stream<Item = Result<M>> {
+        in_stream
+            .map(|compressed| ProstDecoder::new_decompressed(compressed.as_ref()))
+            .map_ok(stream::iter)
+            .try_flatten()
+            .into_stream()
     }
 }

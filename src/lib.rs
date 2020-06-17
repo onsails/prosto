@@ -38,6 +38,8 @@ pub enum Error {
 mod tests {
     use super::compress::*;
     use super::decompress::*;
+    #[cfg(feature = "enable-tokio")]
+    use futures::prelude::*;
     use proptest::prelude::*;
     #[cfg(feature = "enable-tokio")]
     use tokio::runtime::Runtime;
@@ -111,11 +113,17 @@ mod tests {
         let (utx, mut sink) = mpsc::channel::<proto::Dummy>(dummies.len());
 
         let compressor = Compressor::new(urx, ctx, chunk_size, level);
-        let decompressor = Decompressor::new(crx, utx);
+        let decompressor = Decompressor::new(crx);
 
         rt.block_on(async move {
             tokio::task::spawn(compressor.compress());
-            tokio::task::spawn(decompressor.decompress());
+            tokio::task::spawn(decompressor.map_err(anyhow::Error::new).try_fold(
+                utx,
+                |mut utx, message| async {
+                    utx.send(message).await.map_err(anyhow::Error::new)?;
+                    Ok(utx)
+                },
+            ));
 
             for dummy in &dummies {
                 source.send(dummy.clone()).await.unwrap();
