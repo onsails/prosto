@@ -1,19 +1,21 @@
-# Compress prost! messages with zstd, optional tokio channels support
+# Compress prost! messages with zstd, optional async streams support
 
 [![docs](https://docs.rs/prosto/badge.svg)](https://docs.rs/prosto)
 
 ## Simple compress/decompress
 
 ```rust
-fn do_roundtrip_coders(compression_level: i32, dummies: Vec<proto::Dummy>) {
-    let mut encoder = ProstEncoder::new(compression_level).unwrap();
+fn do_roundtrip_coders(level: i32, dummies: Vec<proto::Dummy>) {
+    tracing_subscriber::fmt::try_init().ok();
+
+    let writer = vec![];
+    let mut encoder = ProstEncoder::new(writer, level).unwrap();
     for dummy in &dummies {
         encoder.write(dummy).unwrap();
     }
     let compressed = encoder.finish().unwrap();
 
-    let mut decoder =
-        ProstDecoder::<proto::Dummy>::new_decompressed(compressed.as_slice()).unwrap();
+    let mut decoder = ProstDecoder::<proto::Dummy>::new_decompressed(&compressed[..]).unwrap();
 
     let mut i: usize = 0;
     while let Some(dummy) = decoder.next() {
@@ -26,33 +28,67 @@ fn do_roundtrip_coders(compression_level: i32, dummies: Vec<proto::Dummy>) {
 }
 ```
 
-## Tokio channels support
+## Async streams support
 
 Cargo.toml:
 
 ```toml
-prosto = { version = "0.1", features = ["enable-tokio"] }
+prosto = { version = "0.1", features = ["enable-async"] }
 ```
 
+Enabling this feature exposes `Compressor` and `Decompressor` structs:
+
+* `Compressor::build_stream` converts a stream of prost! messages to a stream of bytes;
+* `Decompressor::stream` converts a stream of compressed bytes to a stream of prost! messages.
+
+Despite this example utilizes tokio channels, this crate does not depend on tokio, it's just used in tests.
+
 ```rust
-fn do_roundtrip_channels(chunk_size: usize, compression_level: i32, dummies: Vec<proto::Dummy>) {
+fn do_roundtrip_channels(chunk_size: usize, level: i32, dummies: Vec<proto::Dummy>) {
     tracing_subscriber::fmt::try_init().ok();
 
     let mut rt = Runtime::new().unwrap();
 
-    let (mut source, urx) = mpsc::channel::<proto::Dummy>(dummies.len());
-    let (ctx, crx) = mpsc::channel::<Vec<u8>>(dummies.len());
-    let (utx, mut sink) = mpsc::channel::<proto::Dummy>(dummies.len());
+    // Dummy source ~> Compressor
+    let (mut source, dummy_rx) = mpsc::channel::<proto::Dummy>(dummies.len());
+    // Compressor ~> Decompressor
+    let (compressed_tx, compressed_rx) = mpsc::channel::<Vec<u8>>(dummies.len());
+    // Decompressor ~> Dummy sink
+    let (dummy_tx, mut sink) = mpsc::channel::<proto::Dummy>(dummies.len());
 
-    let compressor = Compressor::new(urx, ctx, chunk_size, compression_level);
-    let decompressor = Decompressor::new(crx, utx);
+    let compressor = Compressor::build_stream(dummy_rx, level, chunk_size).unwrap();
+    let decompressor = Decompressor::stream(compressed_rx);
 
     rt.block_on(async move {
-        tokio::task::spawn(compressor.compress());
-        tokio::task::spawn(decompressor.decompress());
+        let compress_task = tokio::task::spawn(
+            compressor
+                .map_err(anyhow::Error::new)
+                .try_fold(compressed_tx, |mut ctx, compressed| async {
+                    ctx.send(compressed)
+                        .await
+                        .map_err(|_| anyhow!("Failed to send compressed"))?;
+                    Ok(ctx)
+                })
+                .map_ok(|_| ()),
+        );
+        let decompress_task = tokio::task::spawn(
+            decompressor
+                .map_err(anyhow::Error::new)
+                .try_fold(dummy_tx, |mut utx, message| async {
+                    utx.send(message)
+                        .await
+                        .map_err(|_| anyhow!("Failed to send decompressed"))?;
+                    Ok(utx)
+                })
+                .map_ok(|_| ()),
+        );
 
         for dummy in &dummies {
-            source.send(dummy.clone()).await.unwrap();
+            source
+                .send(dummy.clone())
+                .await
+                .map_err(|_| anyhow!("Failed to send to source"))
+                .unwrap();
         }
 
         std::mem::drop(source);
@@ -63,6 +99,10 @@ fn do_roundtrip_channels(chunk_size: usize, compression_level: i32, dummies: Vec
             i += 1;
         }
 
+        let (compress, decompress) =
+            futures::try_join!(compress_task, decompress_task).unwrap();
+        compress.unwrap();
+        decompress.unwrap();
         assert_eq!(dummies.len(), i);
     });
 }

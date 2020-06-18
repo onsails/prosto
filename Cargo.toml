@@ -9,11 +9,11 @@ homepage = "https://github.com/onsails/prosto"
 repository = "https://github.com/onsails/prosto"
 documentation = "https://docs.rs/prosto"
 categories = ["compression"]
-keywords = ["protocol-buffers", "protobuf", "prost", "zstd", "tokio"]
+keywords = ["protocol-buffers", "protobuf", "prost", "zstd", "streams"]
 
 [features]
 default = []
-enable-tokio = ["tokio", "futures"]
+enable-async = ["futures"]
 
 [dependencies]
 tonic = "0.2"
@@ -25,7 +25,6 @@ zstd = "0.5"
 thiserror = "1.0"
 tracing = "0.1"
 
-tokio = { version = "0.2", default-features = false, features = ["sync"], optional = true }
 futures = { version = "0.3", optional = true }
 
 [dev-dependencies]

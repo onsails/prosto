@@ -1,9 +1,9 @@
 use crate::Error;
-#[cfg(feature = "enable-tokio")]
+#[cfg(feature = "enable-async")]
 pub use io::*;
 use std::io::Cursor;
 
-#[cfg(feature = "enable-tokio")]
+#[cfg(feature = "enable-async")]
 pub mod io;
 
 pub struct ProstDecoder<M: prost::Message> {

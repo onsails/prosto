@@ -1,62 +1,88 @@
-use crate::Error;
 use crate::compress::*;
-use tokio::sync::mpsc;
-use tracing::*;
+use crate::Error;
+use futures::prelude::*;
+use futures::stream;
+use std::io::Cursor;
 
-type Rx<M> = mpsc::Receiver<M>;
-type Tx = mpsc::Sender<Vec<u8>>;
+type Result<M> = std::result::Result<M, Error>;
 
-pub struct Compressor<M: prost::Message> {
-    rx: Rx<M>,
-    tx: Tx,
-    chunk_size: usize,
-    level: i32,
-}
+pub struct Compressor;
 
-impl<M: prost::Message> Compressor<M> {
-    pub fn new(rx: Rx<M>, tx: Tx, chunk_size: usize, level: i32) -> Self {
-        Self {
-            rx,
-            tx,
-            chunk_size,
-            level,
+impl Compressor {
+    pub fn build_stream<M: prost::Message, S: Stream<Item = M>>(
+        in_stream: S,
+        level: i32,
+        chunk_size: usize,
+    ) -> Result<impl Stream<Item = Result<Vec<u8>>>> {
+        let mut buf = vec![];
+        buf.reserve(chunk_size);
+        let buf = Cursor::new(buf);
+        let encoder = ProstEncoder::new(buf, level)?;
+
+        let in_stream = in_stream.map(Some).chain(stream::once(async { None }));
+        let stream = in_stream.scan(Some(encoder), move |encoder, message| {
+            if let Some(message) = message {
+                future::ready(Some(Self::write_produce(
+                    encoder, &message, level, chunk_size,
+                )))
+            } else {
+                future::ready(Some(Self::finish(encoder.take().unwrap())))
+            }
+        });
+        let stream = stream
+            .try_filter_map(|maybe| async { Ok(maybe) })
+            .into_stream();
+        Ok(stream)
+    }
+
+    #[tracing::instrument(skip(encoder, message))]
+    fn write_produce<M: prost::Message>(
+        encoder: &mut Option<ProstEncoder<Cursor<Vec<u8>>>>,
+        message: &M,
+        level: i32,
+        chunk_size: usize,
+    ) -> Result<Option<Vec<u8>>> {
+        encoder.as_mut().unwrap().write(message)?;
+        Self::maybe_produce(encoder, level, chunk_size)
+    }
+
+    #[tracing::instrument(skip(encoder))]
+    fn maybe_produce(
+        encoder: &mut Option<ProstEncoder<Cursor<Vec<u8>>>>,
+        level: i32,
+        chunk_size: usize,
+    ) -> Result<Option<Vec<u8>>> {
+        let compressed_len = encoder.as_ref().unwrap().get_ref().position() as usize;
+        if compressed_len > chunk_size {
+            tracing::trace!(compressed_len, "producing chunk");
+            let compressed = encoder.take().unwrap().finish()?.into_inner();
+
+            let buf = Vec::with_capacity(chunk_size);
+            let buf = Cursor::new(buf);
+            encoder.replace(ProstEncoder::new(buf, level)?);
+
+            tracing::trace!(len = compressed.len(), "produced chunk");
+            Ok(Some(compressed))
+        } else {
+            tracing::trace!(compressed_len, "not enough bytes for a chunk");
+            Ok(None)
         }
     }
 
-    pub async fn compress(mut self) -> Result<(), Error> {
-        trace!("compress started");
-        let mut encoder = ProstEncoder::new(self.level)?;
-        let mut wrote_len = 0;
-
-        while let Some(update) = self.rx.recv().await {
-            wrote_len += encoder.write(&update)?;
-            let compressed_len = encoder.compressed_len();
-
-            trace!(
-                wrote_len,
-                compressed_len,
-                recommended_input_size = VecEncoder::recommended_input_size(),
-                "encoded update",
-            );
-
-            if compressed_len >= self.chunk_size {
-                let compressed = encoder.finish()?;
-                trace!(compressed_len, "sending chunk",);
-                self.tx.send(compressed).await?;
-
-                encoder = ProstEncoder::new(self.level)?;
-            }
+    #[tracing::instrument(skip(encoder))]
+    fn finish(mut encoder: ProstEncoder<Cursor<Vec<u8>>>) -> Result<Option<Vec<u8>>> {
+        encoder.flush().unwrap();
+        tracing::trace!(position = encoder.get_ref().position(), "encoder finish");
+        let cursor = encoder.finish()?;
+        let position = cursor.position() as usize;
+        tracing::trace!(position = position, "after encoder finish");
+        if position != 0 {
+            let mut compressed = cursor.into_inner();
+            compressed.truncate(position);
+            tracing::trace!(len = compressed.len(), "produced final chunk");
+            Ok(Some(compressed))
+        } else {
+            Ok(None)
         }
-
-        let compressed = encoder.finish()?;
-        let compressed_len = compressed.len();
-        if !compressed.is_empty() {
-            trace!(compressed_len, "sending final chunk");
-            self.tx.send(compressed).await?;
-        }
-
-        trace!("compress ended");
-
-        Ok(())
     }
 }

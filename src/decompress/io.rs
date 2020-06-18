@@ -8,7 +8,11 @@ type Result<M> = std::result::Result<M, Error>;
 pub struct Decompressor;
 
 impl Decompressor {
-    pub fn new<M: prost::Message + std::default::Default, In: AsRef<[u8]>, S: Stream<Item = In>>(
+    pub fn stream<
+        M: prost::Message + std::default::Default,
+        In: AsRef<[u8]>,
+        S: Stream<Item = In>,
+    >(
         in_stream: S,
     ) -> impl Stream<Item = Result<M>> {
         in_stream

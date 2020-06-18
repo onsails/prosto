@@ -1,6 +1,3 @@
-#[cfg(feature = "enable-tokio")]
-use tokio::sync::mpsc;
-
 pub mod compress;
 pub mod decompress;
 pub use compress::*;
@@ -10,6 +7,8 @@ pub use decompress::*;
 pub enum Error {
     #[error("Zstd failure: {:?}", 0)]
     Zstd(#[source] std::io::Error),
+    #[error("IO error: {:?}", 0)]
+    IO(#[source] std::io::Error),
     #[error("Failed to prost encode: {:?}", 0)]
     ProstEncode(
         #[from]
@@ -22,28 +21,23 @@ pub enum Error {
         #[source]
         prost::DecodeError,
     ),
-    #[cfg(feature = "enable-tokio")]
-    #[error("Failed to send compressed chunk: channel closed")]
-    CompressorSend(
-        #[from]
-        #[source]
-        mpsc::error::SendError<Vec<u8>>,
-    ),
-    #[cfg(feature = "enable-tokio")]
-    #[error("Failed to send decompressed message: channel closed")]
-    DecompressorSend,
 }
+
+#[cfg(feature = "enable-async")]
+#[cfg(test)]
+#[macro_use]
+extern crate anyhow;
 
 #[cfg(test)]
 mod tests {
     use super::compress::*;
     use super::decompress::*;
-    #[cfg(feature = "enable-tokio")]
+    #[cfg(feature = "enable-async")]
     use futures::prelude::*;
     use proptest::prelude::*;
-    #[cfg(feature = "enable-tokio")]
+    #[cfg(feature = "enable-async")]
     use tokio::runtime::Runtime;
-    #[cfg(feature = "enable-tokio")]
+    #[cfg(feature = "enable-async")]
     use tokio::sync::mpsc;
 
     mod proto {
@@ -52,15 +46,17 @@ mod tests {
 
     #[test]
     fn roundtrip_coders_simple() {
-        let dummies = dummy_dummies();
-        do_roundtrip_coders(5, dummies);
+        do_roundtrip_coders(5, dummy_dummies(3));
+        do_roundtrip_coders(0, dummy_dummies(10000));
     }
 
-    #[cfg(feature = "enable-tokio")]
+    #[cfg(feature = "enable-async")]
     #[test]
     fn roundtrip_channels_simple() {
-        let dummies = dummy_dummies();
-        do_roundtrip_channels(1024, 5, dummies);
+        do_roundtrip_channels(0, 0, dummy_dummies(3));
+        do_roundtrip_channels(1024, 5, dummy_dummies(3));
+        do_roundtrip_channels(1000000, 5, dummy_dummies(3));
+        do_roundtrip_channels(0, 0, dummy_dummies(1993));
     }
 
     proptest! {
@@ -75,7 +71,7 @@ mod tests {
             do_roundtrip_coders(level, dummies);
         }
 
-        #[cfg(feature = "enable-tokio")]
+        #[cfg(feature = "enable-async")]
         #[test]
         fn roundtrip_channels_prop(chunk_size in (0usize..256*1024), level in (-5..22), dummies in arb_dummies()) {
             do_roundtrip_channels(chunk_size, level, dummies);
@@ -83,14 +79,16 @@ mod tests {
     }
 
     fn do_roundtrip_coders(level: i32, dummies: Vec<proto::Dummy>) {
-        let mut encoder = ProstEncoder::new(level).unwrap();
+        tracing_subscriber::fmt::try_init().ok();
+
+        let writer = vec![];
+        let mut encoder = ProstEncoder::new(writer, level).unwrap();
         for dummy in &dummies {
             encoder.write(dummy).unwrap();
         }
         let compressed = encoder.finish().unwrap();
 
-        let mut decoder =
-            ProstDecoder::<proto::Dummy>::new_decompressed(compressed.as_slice()).unwrap();
+        let mut decoder = ProstDecoder::<proto::Dummy>::new_decompressed(&compressed[..]).unwrap();
 
         let mut i: usize = 0;
         while let Some(dummy) = decoder.next() {
@@ -102,31 +100,52 @@ mod tests {
         assert_eq!(dummies.len(), i);
     }
 
-    #[cfg(feature = "enable-tokio")]
+    #[cfg(feature = "enable-async")]
     fn do_roundtrip_channels(chunk_size: usize, level: i32, dummies: Vec<proto::Dummy>) {
         tracing_subscriber::fmt::try_init().ok();
 
         let mut rt = Runtime::new().unwrap();
 
-        let (mut source, urx) = mpsc::channel::<proto::Dummy>(dummies.len());
-        let (ctx, crx) = mpsc::channel::<Vec<u8>>(dummies.len());
-        let (utx, mut sink) = mpsc::channel::<proto::Dummy>(dummies.len());
+        // Dummy source ~> Compressor
+        let (mut source, dummy_rx) = mpsc::channel::<proto::Dummy>(dummies.len());
+        // Compressor ~> Decompressor
+        let (compressed_tx, compressed_rx) = mpsc::channel::<Vec<u8>>(dummies.len());
+        // Decompressor ~> Dummy sink
+        let (dummy_tx, mut sink) = mpsc::channel::<proto::Dummy>(dummies.len());
 
-        let compressor = Compressor::new(urx, ctx, chunk_size, level);
-        let decompressor = Decompressor::new(crx);
+        let compressor = Compressor::build_stream(dummy_rx, level, chunk_size).unwrap();
+        let decompressor = Decompressor::stream(compressed_rx);
 
         rt.block_on(async move {
-            tokio::task::spawn(compressor.compress());
-            tokio::task::spawn(decompressor.map_err(anyhow::Error::new).try_fold(
-                utx,
-                |mut utx, message| async {
-                    utx.send(message).await.map_err(anyhow::Error::new)?;
-                    Ok(utx)
-                },
-            ));
+            let compress_task = tokio::task::spawn(
+                compressor
+                    .map_err(anyhow::Error::new)
+                    .try_fold(compressed_tx, |mut ctx, compressed| async {
+                        ctx.send(compressed)
+                            .await
+                            .map_err(|_| anyhow!("Failed to send compressed"))?;
+                        Ok(ctx)
+                    })
+                    .map_ok(|_| ()),
+            );
+            let decompress_task = tokio::task::spawn(
+                decompressor
+                    .map_err(anyhow::Error::new)
+                    .try_fold(dummy_tx, |mut utx, message| async {
+                        utx.send(message)
+                            .await
+                            .map_err(|_| anyhow!("Failed to send decompressed"))?;
+                        Ok(utx)
+                    })
+                    .map_ok(|_| ()),
+            );
 
             for dummy in &dummies {
-                source.send(dummy.clone()).await.unwrap();
+                source
+                    .send(dummy.clone())
+                    .await
+                    .map_err(|_| anyhow!("Failed to send to source"))
+                    .unwrap();
             }
 
             std::mem::drop(source);
@@ -137,15 +156,19 @@ mod tests {
                 i += 1;
             }
 
+            let (compress, decompress) =
+                futures::try_join!(compress_task, decompress_task).unwrap();
+            compress.unwrap();
+            decompress.unwrap();
             assert_eq!(dummies.len(), i);
         });
     }
 
-    fn dummy_dummies() -> Vec<proto::Dummy> {
+    fn dummy_dummies(count: usize) -> Vec<proto::Dummy> {
         let mut dummies = vec![];
-        for id in 0..3 {
+        for id in 0..count {
             let dummy = proto::Dummy {
-                id,
+                id: id as u64,
                 smth: (0..id as u8).collect(),
             };
             dummies.push(dummy);
