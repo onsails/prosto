@@ -1,10 +1,10 @@
 use crate::Error;
-#[cfg(feature = "enable-async")]
-pub use io::*;
 use std::io::Cursor;
+#[cfg(feature = "enable-async")]
+pub use stream::*;
 
 #[cfg(feature = "enable-async")]
-pub mod io;
+pub mod stream;
 
 pub struct ProstDecoder<M: prost::Message> {
     cursor: Cursor<Vec<u8>>,

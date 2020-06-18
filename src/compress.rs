@@ -1,11 +1,11 @@
 use crate::Error;
-#[cfg(feature = "enable-async")]
-pub use io::*;
 use std::io::Write;
+#[cfg(feature = "enable-async")]
+pub use stream::*;
 use zstd::stream::Encoder;
 
 #[cfg(feature = "enable-async")]
-pub mod io;
+pub mod stream;
 
 type VecEncoder<W> = Encoder<W>;
 
@@ -80,4 +80,3 @@ impl<W: Write> ProstEncoder<W> {
         Vec::with_capacity(VecEncoder::<W>::recommended_input_size())
     }
 }
-
