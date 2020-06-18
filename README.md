@@ -30,13 +30,7 @@ fn do_roundtrip_coders(level: i32, dummies: Vec<proto::Dummy>) {
 
 ## Async streams support
 
-Cargo.toml:
-
-```toml
-prosto = { version = "0.1", features = ["enable-async"] }
-```
-
-Enabling this feature exposes `Compressor` and `Decompressor` structs:
+`enable-async` Cargo feature (enabled by default) exposes `Compressor` and `Decompressor` structs:
 
 * `Compressor::build_stream` converts a stream of prost! messages to a stream of bytes;
 * `Decompressor::stream` converts a stream of compressed bytes to a stream of prost! messages.
