@@ -1,4 +1,4 @@
-# Compress prost! messages with zstd, optional async streams support
+# Compress prost! messages with zstd, async streams support
 
 [![docs](https://docs.rs/prosto/badge.svg)](https://docs.rs/prosto)
 
