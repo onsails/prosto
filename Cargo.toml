@@ -12,7 +12,7 @@ categories = ["compression"]
 keywords = ["protocol-buffers", "protobuf", "prost", "zstd", "streams"]
 
 [features]
-default = []
+default = ["enable-async"]
 enable-async = ["futures"]
 
 [dependencies]
