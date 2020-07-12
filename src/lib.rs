@@ -24,6 +24,12 @@ pub enum Error {
 }
 
 #[cfg(feature = "enable-async")]
+pub enum StreamError<E> {
+    Prosto(Error),
+    Other(E),
+}
+
+#[cfg(feature = "enable-async")]
 #[cfg(test)]
 #[macro_use]
 extern crate anyhow;
