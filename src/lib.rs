@@ -24,8 +24,11 @@ pub enum Error {
 }
 
 #[cfg(feature = "enable-async")]
-pub enum StreamError<E> {
-    Prosto(Error),
+#[derive(thiserror::Error, Debug)]
+pub enum StreamError<E: std::fmt::Debug> {
+    #[error("Prosto: {:?}", 0)]
+    Prosto(#[source] Error),
+    #[error("Other: {:?}", 0)]
     Other(E),
 }
 

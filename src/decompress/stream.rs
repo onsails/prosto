@@ -26,7 +26,7 @@ impl Decompressor {
     pub fn try_stream<
         M: prost::Message + std::default::Default,
         In: AsRef<[u8]>,
-        E,
+        E: std::fmt::Debug,
         S: TryStream<Ok = In, Error = E>,
     >(
         in_stream: S,
