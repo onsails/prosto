@@ -35,7 +35,7 @@ impl Compressor {
         Ok(stream)
     }
 
-    #[tracing::instrument(skip(encoder, message))]
+    #[tracing::instrument(level = "trace", skip(encoder, message))]
     fn write_produce<M: prost::Message>(
         encoder: &mut Option<ProstEncoder<Cursor<Vec<u8>>>>,
         message: &M,
@@ -46,7 +46,7 @@ impl Compressor {
         Self::maybe_produce(encoder, level, chunk_size)
     }
 
-    #[tracing::instrument(skip(encoder))]
+    #[tracing::instrument(level = "trace", skip(encoder))]
     fn maybe_produce(
         encoder: &mut Option<ProstEncoder<Cursor<Vec<u8>>>>,
         level: i32,
@@ -69,7 +69,7 @@ impl Compressor {
         }
     }
 
-    #[tracing::instrument(skip(encoder))]
+    #[tracing::instrument(level = "trace", skip(encoder))]
     fn finish(mut encoder: ProstEncoder<Cursor<Vec<u8>>>) -> Result<Option<Vec<u8>>> {
         encoder.flush().unwrap();
         tracing::trace!(position = encoder.get_ref().position(), "encoder finish");

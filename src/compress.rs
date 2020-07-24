@@ -22,7 +22,7 @@ impl<W: Write> ProstEncoder<W> {
     }
 
     /// Finishes encoder. It has to be called before dropping ProstEncoder!
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub fn finish(mut self) -> Result<W, Error> {
         tracing::trace!("finish");
         if !self.protobuf.is_empty() {
@@ -39,7 +39,7 @@ impl<W: Write> ProstEncoder<W> {
         self.inner.get_mut()
     }
 
-    #[tracing::instrument(skip(self, message))]
+    #[tracing::instrument(level = "trace", skip(self, message))]
     pub fn write<M: prost::Message>(&mut self, message: &M) -> Result<usize, Error> {
         let encoded_len = message.encoded_len();
         tracing::trace!(encoded_len, "writing message to the internal buffer");
@@ -58,7 +58,7 @@ impl<W: Write> ProstEncoder<W> {
 
     /// Flushes internal serialized prorobuf buffer.
     /// Does not flush zstd Encoder!
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub fn flush(&mut self) -> Result<(), Error> {
         tracing::trace!(len = self.protobuf.len(), "flush protobuf");
         // let size_delim = self.protobuf.len().to_le_bytes();
@@ -69,7 +69,7 @@ impl<W: Write> ProstEncoder<W> {
     }
 
     /// Flushes zstd Encoder
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub(crate) fn flush_inner(&mut self) -> Result<(), Error> {
         tracing::trace!("flush inner");
         self.inner.flush().map_err(Error::Zstd)?;
