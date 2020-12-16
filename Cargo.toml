@@ -13,7 +13,10 @@ keywords = ["protocol-buffers", "protobuf", "prost", "zstd", "streams"]
 
 [features]
 default = ["enable-async"]
-enable-async = ["futures"]
+enable-async = ["futures", "anyhow"]
+
+[workspace]
+members = [ "dummy" ]
 
 [dependencies]
 prost = "0.6"
@@ -25,14 +28,4 @@ thiserror = "1.0"
 tracing = "0.1"
 
 futures = { version = "0.3", optional = true }
-
-[dev-dependencies]
-rand = "0.7"
-tracing-subscriber = "0.2"
-proptest = "0.10"
-tokio = { version = "0.2", features = ["rt-threaded", "sync"]}
-tonic = "0.3"
-anyhow = "1.0"
-
-[build-dependencies]
-tonic-build = { version = "0.3", default-features = false, features = ["transport", "prost"] }
+anyhow = { version = "1.0", optional = true }
