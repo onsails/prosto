@@ -20,7 +20,7 @@ members = [ "dummy" ]
 
 [dependencies]
 prost = "0.6"
-prost-types = "0.6"
+prost-types = "0.7"
 
 zstd = "0.6"
 
