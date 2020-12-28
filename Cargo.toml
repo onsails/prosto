@@ -19,7 +19,7 @@ enable-async = ["futures", "anyhow"]
 members = [ "dummy" ]
 
 [dependencies]
-prost = "0.6"
+prost = "0.7"
 prost-types = "0.6"
 
 zstd = "0.6"
