@@ -7,14 +7,14 @@ use zstd::stream::Encoder;
 #[cfg(feature = "enable-async")]
 pub mod stream;
 
-type VecEncoder<W> = Encoder<W>;
+type VecEncoder<'a, W> = Encoder<'a, W>;
 
-pub struct ProstEncoder<W: Write> {
+pub struct ProstEncoder<'a, W: Write> {
     protobuf: Vec<u8>,
-    inner: VecEncoder<W>,
+    inner: VecEncoder<'a, W>,
 }
 
-impl<W: Write> ProstEncoder<W> {
+impl<'a, W: Write> ProstEncoder<'a, W> {
     pub fn new(writer: W, level: i32) -> Result<Self, Error> {
         let inner = VecEncoder::new(writer, level).map_err(Error::Zstd)?;
         let protobuf = Self::new_protobuf();

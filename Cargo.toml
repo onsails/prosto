@@ -1,6 +1,6 @@
 [package]
 name = "prosto"
-version = "0.4.6-alpha.0"
+version = "0.5.0"
 authors = ["Andrey Kuznetsov <fear@loathing.in>"]
 edition = "2018"
 license-file = "LICENSE.txt"
@@ -19,13 +19,15 @@ enable-async = ["futures", "anyhow"]
 members = [ "dummy" ]
 
 [dependencies]
-prost = "0.6"
-prost-types = "0.6"
+prost = "0.7"
+prost-types = "0.7"
 
 zstd = "0.6"
 
 thiserror = "1.0"
 tracing = "0.1"
+
+bytes = "1.0"
 
 futures = { version = "0.3", optional = true }
 anyhow = { version = "1.0", optional = true }
