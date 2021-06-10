@@ -22,7 +22,7 @@ members = [ "dummy" ]
 prost = "0.7"
 prost-types = "0.7"
 
-zstd = "0.8"
+zstd = "0.9"
 
 thiserror = "1.0"
 tracing = "0.1"
