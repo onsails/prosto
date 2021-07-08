@@ -12,7 +12,7 @@ rand = "0.8"
 tracing-subscriber = "0.2"
 proptest = "1.0"
 tokio = { version = "1.8.1", features = ["rt-multi-thread", "sync"]}
-tonic = "0.4"
+tonic = "0.5"
 anyhow = "1.0"
 
 [build-dependencies]
