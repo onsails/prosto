@@ -9,7 +9,7 @@ prost = "0.8"
 [dev-dependencies]
 prosto = { path = "../" }
 rand = "0.8"
-tracing-subscriber = "0.2"
+tracing-subscriber = "0.3"
 proptest = "1.0"
 tokio = { version = "1.10.1", features = ["rt-multi-thread", "sync"]}
 tonic = "0.5"
