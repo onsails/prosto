@@ -1,29 +1,59 @@
 {
+  description = "A very basic flake";
+
   inputs = {
-    nixpkgs.url = github:NixOS/nixpkgs/21.05;
-    rust-overlay.url = "github:oxalica/rust-overlay";
     utils.url = github:numtide/flake-utils;
+    rust-overlay.url = "github:oxalica/rust-overlay";
   };
 
-  outputs = { self, nixpkgs, utils, rust-overlay, ... }@inputs:
-    utils.lib.eachDefaultSystem (
-      system:
-      let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [
-            rust-overlay.overlay
+  outputs = { self, nixpkgs, utils, rust-overlay }: utils.lib.eachDefaultSystem (
+    system:
+    let
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [ rust-overlay.overlay ];
+      };
+      rust = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+    in
+    {
+
+      checks.ci = pkgs.stdenv.mkDerivation {
+        name = "ci";
+
+        src = ./.;
+
+        buildInputs = with pkgs;
+          [
+            rust
+            nodejs-14_x
+
+            cacert
           ];
-        };
-      in
-      {
-        devShell = pkgs.mkShell {
-          buildInputs = with pkgs; [
-            # rust-bin.nightly.latest.default
-            (rust-bin.fromRustupToolchainFile
-              ./rust-toolchain.toml)
-          ];
-        };
-      }
-    );
+
+        buildPhase = ''
+          cd test-wasm
+          export HOME=$TMP
+          npm install
+          npm run asbuild
+
+          cd ..
+          cargo test
+
+          mkdir $out
+        '';
+
+        dontInstall = true;
+        dontFixup = true;
+      };
+
+      devShell = pkgs.mkShell {
+        buildInputs = with pkgs; [
+          rust
+          nodejs-14_x
+
+          cargo-release
+        ];
+      };
+    }
+  );
 }
