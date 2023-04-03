@@ -16,4 +16,4 @@ tonic = "0.6"
 anyhow = "1.0"
 
 [build-dependencies]
-tonic-build = { version = "0.6", default-features = false, features = ["transport", "prost"] }
+tonic-build = { version = "0.9", default-features = false, features = ["transport", "prost"] }
